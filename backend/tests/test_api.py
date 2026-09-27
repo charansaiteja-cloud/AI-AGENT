@@ -14,7 +14,7 @@ def test_root():
     data = response.json()
 
     assert data["message"] == "Customer Support Agent API"
-    assert data["version"] == "0.1.0"
+    assert data["version"] == "0.2.0"
 
 
 def test_health():
