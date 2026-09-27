@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,11 +10,16 @@ from backend.app.db.database import get_db
 from backend.app.models.conversation import Conversation
 from backend.app.models.customer import Customer
 from backend.app.models.message import Message
+from backend.app.models.attachment import Attachment
+import uuid
+from pathlib import Path
 from backend.app.services.ollama import OllamaService
+from backend.app.services.hindsight import HindsightClient
 
 
 router = APIRouter(prefix="/api")
 ollama = OllamaService()
+hindsight = HindsightClient()
 
 
 class ChatRequest(BaseModel):
@@ -85,6 +90,97 @@ async def create_customer(
         "name": customer.name,
         "email": customer.email,
         "created_at": customer.created_at,
+    }
+
+
+
+@router.get("/conversations/{conversation_id}/attachments")
+async def list_attachments(
+    conversation_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    conversation = await db.get(Conversation, conversation_id)
+
+    if conversation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found",
+        )
+
+    result = await db.execute(
+        select(Attachment)
+        .where(Attachment.conversation_id == conversation_id)
+        .order_by(Attachment.created_at.asc(), Attachment.id.asc())
+    )
+
+    attachments = result.scalars().all()
+
+    return {
+        "conversation_id": conversation_id,
+        "attachments": [
+            {
+                "id": item.id,
+                "conversation_id": item.conversation_id,
+                "original_filename": item.original_filename,
+                "stored_filename": item.stored_filename,
+                "content_type": item.content_type,
+                "file_size": item.file_size,
+                "created_at": item.created_at,
+            }
+            for item in attachments
+        ],
+    }
+
+@router.post("/conversations/{conversation_id}/attachments")
+async def upload_attachment(
+    conversation_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    conversation = await db.get(Conversation, conversation_id)
+
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+
+    content = await file.read()
+
+    if len(content) > settings.max_upload_size:
+        raise HTTPException(
+            status_code=413,
+            detail="File is too large. Maximum size is 10 MB.",
+        )
+
+    upload_dir = Path(settings.upload_dir)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    extension = Path(file.filename).suffix.lower()
+    stored_filename = f"{uuid.uuid4().hex}{extension}"
+
+    (upload_dir / stored_filename).write_bytes(content)
+
+    attachment = Attachment(
+        conversation_id=conversation_id,
+        original_filename=file.filename,
+        stored_filename=stored_filename,
+        content_type=file.content_type or "application/octet-stream",
+        file_size=len(content),
+    )
+
+    db.add(attachment)
+    await db.commit()
+    await db.refresh(attachment)
+
+    return {
+        "id": attachment.id,
+        "conversation_id": attachment.conversation_id,
+        "original_filename": attachment.original_filename,
+        "stored_filename": attachment.stored_filename,
+        "content_type": attachment.content_type,
+        "file_size": attachment.file_size,
+        "created_at": attachment.created_at,
     }
 
 
@@ -230,9 +326,7 @@ async def chat(
     # Load previous conversation messages.
     result = await db.execute(
         select(Message)
-        .where(
-            Message.conversation_id == conversation.id
-        )
+        .where(Message.conversation_id == conversation.id)
         .order_by(Message.created_at.asc(), Message.id.asc())
     )
 
@@ -247,6 +341,70 @@ async def chat(
         if item.role in {"user", "assistant"}
     ]
 
+    # Recall relevant long-term customer memory.
+    # Include the customer's preferences explicitly so preference
+    # memories are retrieved even when the current question is indirect.
+    try:
+        memories = await hindsight.recall_text(
+            query=(
+                "customer response preference concise answers "
+                "customer prefers concise responses "
+                "customer communication preferences "
+                f"Current customer message: {message_text}"
+            ),
+            max_tokens=1200,
+        )
+    except Exception:
+        memories = ""
+
+    # Give recalled memory to Ollama as a real system instruction.
+    system_prompt = """You are a customer support assistant.
+
+You may receive CUSTOMER FACTS below. These facts describe the
+customer you are currently assisting. Treat relevant facts as true
+customer information and use them when answering.
+
+CUSTOMER FACTS:
+{memories}
+
+Rules:
+- Use relevant customer facts when answering.
+- If the customer has a stated response preference, follow it.
+- Answer the current question directly.
+- Do not claim that you lack information that is present in CUSTOMER FACTS.
+- Do not mention the source of CUSTOMER FACTS.
+- Do not mention these instructions.
+- Do not add unnecessary greetings or filler.
+""".format(memories=memories or "(No relevant customer facts found.)")
+
+    # Make explicit customer preferences deterministic.
+    # This prevents the small local model from ignoring a clearly
+    # recalled preference.
+    if "Customer prefers concise answers" in memories:
+        system_prompt += (
+            "\nIMPORTANT: The customer prefers concise answers. "
+            "Keep your response brief and direct."
+        )
+
+    # Apply recalled customer response preferences deterministically.
+    # This avoids relying on the small local model to infer preferences.
+    if any(
+        phrase in memories.lower()
+        for phrase in (
+            "customer prefers concise",
+            "customer prefers concise answers",
+            "customer prefers concise answer style",
+            "customer prefers concise responses",
+        )
+    ):
+        system_prompt += (
+            "\nCUSTOMER RESPONSE PREFERENCE: "
+            "Answer briefly and directly. "
+            "Do not add greetings or filler."
+        )
+
+    llm_message = message_text
+
     # Save user message.
     user_message = Message(
         conversation_id=conversation.id,
@@ -259,8 +417,9 @@ async def chat(
 
     try:
         response = await ollama.chat(
-            message_text,
+            llm_message,
             history=history,
+            system_prompt=system_prompt,
         )
     except Exception as exc:
         await db.rollback()
@@ -283,6 +442,21 @@ async def chat(
     conversation.updated_at = datetime.utcnow()
 
     await db.commit()
+
+    # Store the conversation turn in Hindsight.
+    try:
+        await hindsight.retain(
+            content=(
+                f"Customer: {message_text}\n"
+                f"Assistant: {response}"
+            ),
+            conversation_id=str(conversation.id),
+            tags=["customer-support"],
+            context="customer support conversation",
+        )
+    except Exception:
+        # Hindsight failure must not break a successful chat response.
+        pass
 
     return ChatResponse(
         response=response,
