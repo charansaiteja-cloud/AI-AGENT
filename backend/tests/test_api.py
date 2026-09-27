@@ -1,13 +1,22 @@
-from fastapi.testclient import TestClient
+import httpx
+import pytest
 
 from backend.app.main import app
 
 
-client = TestClient(app)
+@pytest.fixture
+async def client():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as client:
+        yield client
 
 
-def test_root():
-    response = client.get("/")
+@pytest.mark.anyio
+async def test_root(client):
+    response = await client.get("/")
 
     assert response.status_code == 200
 
@@ -17,8 +26,9 @@ def test_root():
     assert data["version"] == "0.2.0"
 
 
-def test_health():
-    response = client.get("/api/health")
+@pytest.mark.anyio
+async def test_health(client):
+    response = await client.get("/api/health")
 
     assert response.status_code == 200
 
@@ -28,8 +38,9 @@ def test_health():
     assert data["service"] == "Customer Support Agent"
 
 
-def test_models():
-    response = client.get("/api/models")
+@pytest.mark.anyio
+async def test_models(client):
+    response = await client.get("/api/models")
 
     assert response.status_code == 200
 
@@ -40,8 +51,9 @@ def test_models():
     assert data["active_model"] == "qwen3:8b"
 
 
-def test_chat_empty_message():
-    response = client.post(
+@pytest.mark.anyio
+async def test_chat_empty_message(client):
+    response = await client.post(
         "/api/chat",
         json={"message": ""},
     )
