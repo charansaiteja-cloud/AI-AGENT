@@ -1,0 +1,217 @@
+opencode run -m ollama/qwen3:8b "BUILD THIS PROJECT: Customer Support Agent with persistent memory using Hindsight.
+
+You are the senior engineer responsible for implementing the project in this repository. Inspect the repository first. Do not blindly create files before understanding the existing project.
+
+PROJECT GOAL:
+Build a professional-looking customer support AI agent that remembers customers across conversations using Hindsight. The main purpose is to demonstrate that persistent memory changes the quality of customer support.
+
+CORE DEMO:
+A customer starts a conversation and provides information such as:
+- name
+- company
+- product/device
+- operating system
+- previous problems
+- preferences
+- previous support interactions
+
+The agent should use Hindsight to retain important information from conversations.
+
+Later, the same customer returns and asks another question. The agent should recall relevant information from Hindsight and personalize its response without requiring the customer to repeat everything.
+
+HINDSIGHT IS THE CENTRAL FEATURE:
+Implement real Hindsight integration, not a fake memory system and not a simple in-memory Python dictionary.
+
+Use Hindsight's actual retain and recall functionality according to its current documentation/API.
+
+Official resources:
+Hindsight GitHub: https://github.com/vectorize-io/hindsight
+Hindsight documentation: https://hindsight.vectorize.io/
+Vectorize agent memory: https://vectorize.io/what-is-agent-memory
+
+LLM:
+Use Ollama locally.
+Primary model:
+qwen3:8b
+Ollama endpoint:
+http://localhost:11434
+
+Do not require a paid LLM API.
+
+EMBEDDINGS:
+The machine already has:
+nomic-embed-text:latest
+
+Use it only if required by the selected Hindsight architecture.
+
+APPLICATION REQUIREMENTS:
+
+1. Backend
+Create a clean Python backend.
+
+Responsibilities:
+- receive customer messages
+- maintain conversation/session information
+- call Ollama
+- retrieve relevant customer memories from Hindsight before generating responses
+- generate the response
+- retain important facts/interactions in Hindsight after the interaction
+- expose clean API endpoints
+- handle errors gracefully
+
+2. Frontend
+Create a simple professional customer-support interface.
+
+It should include:
+- customer information area
+- conversation/chat area
+- message input
+- send button
+- memory indicator
+- visible indication when relevant customer memory was recalled
+- optional memory/history panel
+
+The UI should look like a real internal support tool, not a toy chatbot.
+
+3. Memory behavior
+Implement a clear distinction between:
+- current conversation context
+- persistent customer memory
+
+Important information should survive restarting the application.
+
+Memory examples:
+- customer's name
+- company
+- device/product
+- operating system
+- previous issues
+- previous solutions
+- customer preferences
+- unresolved problems
+- important account context
+
+Do not save every piece of conversation blindly. Decide what information is useful for future support interactions.
+
+4. Customer identity
+Create a stable customer ID.
+
+The same customer ID must allow Hindsight memories to be recalled in future conversations.
+
+Provide a small set of demo customers or an easy way to create a customer.
+
+5. Before/after demo
+Make the application easy to demonstrate.
+
+Include a way to demonstrate:
+
+FIRST INTERACTION:
+Customer:
+'My name is Sarah. I work at Acme Corp. I'm using Ubuntu 24.04 on a Dell XPS 15. My Wi-Fi keeps disconnecting.'
+
+The agent should respond appropriately and retain useful information.
+
+SECOND INTERACTION:
+Later:
+'The Wi-Fi problem is back.'
+
+The agent should recall Sarah's previous context and respond using the remembered information.
+
+The UI should make it obvious that the information came from persistent memory.
+
+6. Memory observability
+Add useful debugging information for development.
+
+For each request, make it possible to see:
+- customer ID
+- memories recalled
+- information retained
+- whether Hindsight was used
+- response generation
+
+Do not expose sensitive implementation details unnecessarily to normal customers, but make them available in a developer/debug panel.
+
+7. Project structure
+Use a clean structure similar to:
+
+customer-support-agent/
+  backend/
+  frontend/
+  tests/
+  scripts/
+  docs/
+  .env.example
+  README.md
+
+Adapt this structure if the existing repository has a better architecture.
+
+8. Configuration
+Do not hardcode secrets.
+
+Use environment variables.
+
+Create:
+.env.example
+
+Document all required environment variables.
+
+9. Testing
+Create tests for:
+- customer creation
+- message handling
+- Hindsight retain
+- Hindsight recall
+- persistent memory across conversations
+- Ollama communication
+- error handling
+
+10. README
+Write a complete README explaining:
+- what the project does
+- why persistent memory matters
+- architecture
+- Hindsight integration
+- Ollama setup
+- installation
+- running backend
+- running frontend
+- testing
+- demo scenario
+- troubleshooting
+
+11. Demo quality
+Make the project polished enough for a technical hackathon demonstration.
+
+Prioritize:
+- reliable functionality
+- clear Hindsight integration
+- excellent before/after memory demonstration
+- clean UI
+- understandable architecture
+- easy setup
+
+Do NOT:
+- use fake Hindsight calls
+- implement memory only with a Python dictionary
+- claim benchmarks that were not measured
+- add unnecessary features
+- require paid APIs
+- leave major functionality as TODOs
+
+IMPORTANT:
+Before implementing Hindsight, inspect its current API/documentation and choose the correct integration approach.
+
+Because the repository may currently be empty, create the complete application from scratch if necessary.
+
+After implementation:
+1. install dependencies
+2. run tests
+3. run lint/type checks where appropriate
+4. start the application
+5. verify the main customer-memory workflow
+6. fix errors you encounter
+7. update README
+8. report exactly what files you created/changed and how to run the application.
+
+Work incrementally. Inspect first, plan the architecture, implement it, test it, then fix problems."
+
