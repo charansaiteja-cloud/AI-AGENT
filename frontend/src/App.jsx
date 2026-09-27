@@ -59,7 +59,7 @@ function App() {
           content: data.response,
         },
       ]);
-    } catch (error) {
+    } catch {
       setMessages((current) => [
         ...current,
         {
