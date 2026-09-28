@@ -534,15 +534,9 @@ ollama pull qwen3:8b
 ```
 
 ---
-
 ## Demo
 
-A demo video is included in the repository under:
+🎥 [View the Demo Video — brag.mp4](docs/demo/brag.mp4)
 
-```text
-docs/demo/
-```
-
-The demo showcases the customer support workflow, local Qwen3 inference, persistent memory, attachments, and the web interface.
-
+The demo showcases the customer support workflow, local Qwen3 8B inference, persistent long-term memory with Hindsight, attachment handling, and the web interface.
 
