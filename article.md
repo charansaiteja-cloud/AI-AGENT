@@ -120,3 +120,36 @@ This project showed me that a useful customer support agent needs more than a ca
 The combination of React, FastAPI, SQLite, Ollama, Qwen3 8B, and Hindsight provides a practical foundation for experimenting with persistent customer context. The key architectural lesson is to treat long-term memory as a separate concern rather than simply making the chat history longer.
 
 Future improvements could include better memory retrieval, authentication, richer ticket workflows, and production deployment. For me, the most valuable part of the project was seeing how these components work together to turn a basic chatbot into a more stateful customer support system.
+
+## How a Support Request Flows Through the System
+
+A typical request moves through several layers before the customer sees an answer. The React interface sends the message to the FastAPI backend. The backend identifies the conversation and gathers the available context. It can then request relevant memories from Hindsight instead of sending an unrelated collection of previous messages to the model.
+
+The resulting context is combined with the current customer request and passed to Ollama. Qwen3 8B generates the response, which is returned through the FastAPI API to the React interface. The interaction is also persisted so that the application has a reliable record of what happened.
+
+This flow gives each component a focused responsibility. The frontend concentrates on user interaction, the API coordinates the workflow, SQLite stores application state, Ollama provides inference, and Hindsight provides long-term memory.
+
+## What I Would Improve Next
+
+The current implementation is intentionally focused on the core memory workflow, but there are several areas that could be developed further.
+
+Authentication would allow the system to securely associate conversations and memories with individual customers. More advanced ticket workflows could also connect conversations to ticket status, priority, assignment, and resolution history.
+
+Memory retrieval could be improved as the number of conversations grows. Instead of relying only on the current query, a future version could use additional customer metadata and more carefully designed retrieval strategies.
+
+Production deployment would also require additional work around secrets, logging, monitoring, database management, authentication, and service reliability.
+
+These improvements are useful because they build on the existing separation of responsibilities rather than requiring the entire application to be redesigned.
+
+## Final Thoughts
+
+Building this project changed how I think about AI support systems. The language model is only one part of the experience. A useful agent also needs persistence, memory, APIs, a user interface, error handling, testing, and a clear architecture.
+
+The most important result was not simply getting an AI response on screen. It was creating a system where information can survive beyond a single conversation and become useful later.
+
+That distinction is what makes long-term memory interesting for customer support. Instead of treating every conversation as an isolated request, the application can gradually build useful context around the customer.
+
+The project also reinforced a practical engineering principle: start with clear boundaries between components. When the frontend, backend, database, model runtime, and memory layer each have a defined role, it becomes easier to test the system, diagnose problems, and improve individual pieces without rewriting everything.
+
+For future versions, I would focus on secure customer identity, stronger memory retrieval, richer support workflows, observability, and production deployment. The current architecture provides a solid foundation for those next steps.
+
