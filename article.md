@@ -1,6 +1,3 @@
-cd ~/customer-support-agent
-
-cat > article.md <<'EOF'
 # How I Gave a Customer Support Agent Long-Term Memory With Hindsight
 
 A customer support agent can answer the current question correctly and still feel like it has forgotten the customer.
