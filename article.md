@@ -1,8 +1,11 @@
 cd ~/customer-support-agent
 
-python -c 'from pathlib import Path; p=Path("article.md"); p.write_text("""# How I Gave a Customer Support Agent Long-Term Memory With Hindsight
+cat > article.md <<'EOF'
+# How I Gave a Customer Support Agent Long-Term Memory With Hindsight
 
-A customer support agent can answer the current question correctly and still feel like it has forgotten the customer. That was the problem I wanted to solve.
+A customer support agent can answer the current question correctly and still feel like it has forgotten the customer.
+
+That was the problem I wanted to solve.
 
 I built a full-stack customer support application combining React, FastAPI, SQLite, Ollama, Qwen3 8B, and Hindsight. The application maintains normal conversation history while also retaining useful information that can be recalled in future conversations.
 
@@ -20,7 +23,9 @@ For example, imagine a customer says:
 
 > "I prefer concise responses and usually contact support from my phone."
 
-That information may not matter for the current question, but it could be useful during a future support interaction. I wanted the agent to recover that kind of context without requiring the customer to repeat it.
+That information may not matter for the current question, but it could be useful during a future support interaction.
+
+I wanted the agent to recover that kind of context without requiring the customer to repeat it.
 
 That became the central design problem.
 
@@ -37,8 +42,8 @@ Ollama provides the local model runtime, with Qwen3 8B handling response generat
                          |
                          v
                     FastAPI API
-                    /         \\
-                   /           \\
+                    /         \
+                   /           \
                   v             v
              SQLite         Ollama
                                |
