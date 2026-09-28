@@ -21,7 +21,7 @@ Sending the entire conversation history back to the language model is possible, 
 
 For example, imagine a customer says:
 
-> "I prefer concise responses and usually contact support from my phone."
+"I prefer concise responses and usually contact support from my phone."
 
 That information may not matter for the current question, but it could be useful during a future support interaction.
 
@@ -53,3 +53,5 @@ Ollama provides the local model runtime, with Qwen3 8B handling response generat
                            Hindsight
                                |
                         Long-term memory
+
+```
