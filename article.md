@@ -1,39 +1,50 @@
 cd ~/customer-support-agent
 
-cat > article.md <<'EOF'
-# How I Gave a Customer Support Agent Memory With Hindsight
+python -c 'from pathlib import Path; p=Path("article.md"); p.write_text("""# How I Gave a Customer Support Agent Long-Term Memory With Hindsight
 
-A customer support agent can answer the current question correctly and still feel like it has forgotten the customer. I wanted mine to remember useful customer preferences across conversations, not just replay the previous chat window.
+A customer support agent can answer the current question correctly and still feel like it has forgotten the customer. That was the problem I wanted to solve.
 
-I built the system around FastAPI, Ollama with Qwen3 8B, SQLite for conversation persistence, and Hindsight for long-term customer memory.
+I built a full-stack customer support application combining React, FastAPI, SQLite, Ollama, Qwen3 8B, and Hindsight. The application maintains normal conversation history while also retaining useful information that can be recalled in future conversations.
 
-## The problem with ordinary conversation history
+The goal was not simply to build another chatbot. I wanted to explore what happens when customer support becomes a stateful system: one that can remember previous interactions, preferences, and useful context instead of starting from zero every time.
 
-Conversation history is useful, but it is not the same thing as customer memory.
+## The Problem With Ordinary Conversation History
 
-A conversation can contain dozens of messages, while a customer preference may be expressed once and become relevant much later. Sending the entire history to the language model every time is also not a good substitute for deciding which facts actually matter.
+Conversation history and long-term memory solve different problems.
 
-For customer support, the distinction matters.
+A conversation may contain dozens of messages, but only a few pieces of information may remain useful later. A customer might mention a preference, explain a recurring issue, or provide context that becomes important several days later.
 
-If Sarah says during one conversation that she prefers concise answers, I don't want the next conversation to start from zero. The agent should be able to retrieve that preference when Sarah returns.
+Sending the entire conversation history back to the language model is possible, but it does not automatically create useful long-term memory. It can also become increasingly noisy as conversations grow.
 
-That became the core design problem.
+For example, imagine a customer says:
 
-## Where Hindsight fits
+> "I prefer concise responses and usually contact support from my phone."
 
-The application has a small Hindsight client in `backend/app/services/hindsight.py`.
+That information may not matter for the current question, but it could be useful during a future support interaction. I wanted the agent to recover that kind of context without requiring the customer to repeat it.
 
-The client exposes three important operations: health checking, retaining a conversation turn, and recalling relevant memory.
+That became the central design problem.
 
-When a conversation is stored, the application sends the customer message and assistant response to Hindsight:
+## Architecture
 
-```python
-await hindsight.retain(
-    content=(
-        f"Customer: {message_text}\n"
-        f"Assistant: {response}"
-    ),
-    conversation_id=str(conversation.id),
-    tags=["customer-support"],
-    context="customer support conversation",
-)
+The application is divided into a React/Vite frontend and a FastAPI backend.
+
+The frontend provides the customer-facing chat interface. FastAPI handles API requests, conversation persistence, attachments, and communication with the AI services. SQLite with SQLAlchemy provides the application database.
+
+Ollama provides the local model runtime, with Qwen3 8B handling response generation. Hindsight sits alongside the application as the long-term memory layer.
+
+```text
+                    React + Vite
+                         |
+                         v
+                    FastAPI API
+                    /         \\
+                   /           \\
+                  v             v
+             SQLite         Ollama
+                               |
+                            Qwen3 8B
+                               |
+                               v
+                           Hindsight
+                               |
+                        Long-term memory
