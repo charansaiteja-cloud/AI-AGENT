@@ -8,8 +8,12 @@ node_modules/
 dist/
 build/
 .pytest_cache/
+.ruff_cache/
 .coverage
+htmlcov/
+coverage/
 *.log
+.DS_Store
 data/*
 !data/.gitkeep
 data/*.db

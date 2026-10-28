@@ -1,0 +1,69 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  hindsight:
+    image: ghcr.io/vectorize-io/hindsight:latest
+    ports:
+      - "8888:8888"
+    environment:
+      HINDSIGHT_API_HOST: 0.0.0.0
+      HINDSIGHT_API_PORT: "8888"
+      HINDSIGHT_API_LLM_PROVIDER: ollama
+      HINDSIGHT_API_LLM_BASE_URL: http://ollama:11434/v1
+      HINDSIGHT_API_LLM_MODEL: qwen2.5-coder:3b
+      HINDSIGHT_API_LLM_REASONING_EFFORT: none
+      HINDSIGHT_ENABLE_API: "true"
+      HINDSIGHT_ENABLE_CP: "true"
+    volumes:
+      - hindsight-data:/home/hindsight/.pg0
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  models:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - ollama pull qwen3:8b && ollama pull qwen2.5-coder:3b
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: sqlite+aiosqlite:////data/support_agent.db
+      UPLOAD_DIR: /data/uploads
+      CORS_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen3:8b
+      HINDSIGHT_BASE_URL: http://hindsight:8888
+      HINDSIGHT_ENABLED: "true"
+    volumes:
+      - app-data:/data
+    depends_on:
+      models:
+        condition: service_completed_successfully
+      hindsight:
+        condition: service_started
+
+volumes:
+  app-data:
+  ollama-data:
+  hindsight-data:

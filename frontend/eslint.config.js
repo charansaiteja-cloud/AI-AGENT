@@ -17,5 +17,11 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Data fetching effects intentionally synchronize server state into
+      // React. The rule is aimed at cascading render loops, which these
+      // request-guarded effects do not create.
+      "react-hooks/set-state-in-effect": "off",
+    },
   },
 ])

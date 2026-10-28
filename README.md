@@ -1,542 +1,260 @@
-# AI Customer Support Agent with Long-Term Memory
+# Support AI
 
-A full-stack customer support agent built with React, FastAPI, SQLite, Ollama, Qwen3 8B, and Hindsight.
+A customer support agent with durable, per-customer long-term memory.
 
-The goal is to provide support conversations that can persist useful customer context beyond a single conversation.
+Support AI combines a React console, a FastAPI backend, SQLite, local Ollama
+inference, and [Hindsight](https://github.com/vectorize-io/hindsight) as the
+memory layer. A customer can explain their setup once, start a new
+conversation later, and still get an answer that reflects the earlier context.
+
+[Watch the demo video](docs/demo/customer-support-agent-demo.mp4)
+
+## What it does
+
+- **Remembers customers across conversations.** Durable facts such as name,
+  company, device, operating system, recurring issues, and response
+  preferences are extracted with Qwen3 and stored in Hindsight.
+- **Keeps memory scoped.** Every customer gets a random memory key and a
+  dedicated Hindsight bank. Recall cannot leak between customers.
+- **Shows its work.** The console includes a memory inspector, recalled
+  memories per turn, latency, model, and service health.
+- **Supports attachments.** Text, Markdown, CSV, JSON, and PDF files are
+  parsed and included in the model context; images are attached and described
+  without pretending to read their pixels.
+- **Manages the full lifecycle.** Create, rename, and delete customers and
+  conversations; clear a customer's memory; deleting a customer also deletes
+  their Hindsight bank.
+- **Answers quickly.** Independent work is overlapped, Hindsight is prepared
+  while the model generates, and the UI renders the reply optimistically.
 
 ## Architecture
 
-- Frontend: React + Vite
-- Backend: FastAPI
-- Database: SQLite + SQLAlchemy
-- LLM: Ollama + Qwen3 8B
-- Long-term memory: Hindsight
-- Testing: Pytest
-
 ```text
-React / Vite
-     |
-     v
-FastAPI API
-   /     \
-  v       v
-SQLite   Ollama
-          |
-       Qwen3 8B
-
-FastAPI <----> Hindsight
-                 |
-          Long-term memory
- 
-# Installation & Setup
-
-This project is a customer support AI agent built with:
-
-* **Frontend:** React + Vite
-* **Backend:** FastAPI + Python
-* **Database:** SQLite
-* **LLM:** Qwen3 8B
-* **Local LLM Runtime:** Ollama
-* **Long-term Memory:** Hindsight
-
-The following instructions explain how to run the project on **macOS, Linux, and Windows**.
-
----
-
-## Prerequisites
-
-Before starting, install:
-
-* Git
-* Python 3.10+
-* Node.js 18+
-* npm
-* Ollama
-
-Check that they are installed:
-
-```bash
-git --version
-python --version
-node --version
-npm --version
-ollama --version
+┌─────────────────────┐        ┌──────────────────────┐
+│ React + Vite        │  /api  │ FastAPI              │
+│ support console     │───────▶│ chat / customers /   │
+│                     │        │ conversations        │
+└─────────────────────┘        └──────┬───────┬───────┘
+                                      │       │
+                         ┌────────────▼─┐   ┌─▼──────────────┐
+                         │ SQLite       │   │ Ollama         │
+                         │ app state    │   │ qwen3:8b       │
+                         └──────────────┘   └─┬──────────────┘
+                                            │ generation
+                         ┌──────────────────▼─┐
+                         │ Hindsight           │
+                         │ one bank/customer   │
+                         │ semantic recall     │
+                         └─────────────────────┘
 ```
 
----
+The backend extracts facts with Ollama, stores those exact facts in Hindsight
+(`retain_extraction_mode="chunks"`, observations disabled), and uses Hindsight
+for semantic recall. SQLite remains the source of truth for application data;
+Hindsight is the source of truth for long-term customer context.
 
-# 1. Clone the Repository
+## Quick start with Docker
 
-Open Terminal, Command Prompt, or PowerShell:
+Requirements: Docker with Compose, about 8 GB of free disk for the models, and
+a machine that can run an 8B model.
 
 ```bash
 git clone https://github.com/charansaiteja-cloud/AI-AGENT.git
 cd AI-AGENT
+docker compose up --build -d
 ```
 
----
-
-# 2. Install Ollama
-
-Ollama is used to run the Qwen3 model locally.
-
-## macOS
-
-Install Ollama from the official website and then verify:
+The `models` service pulls `qwen3:8b` and `qwen2.5-coder:3b` on first start.
+Once it finishes, open <http://localhost:8000>. API docs are at
+<http://localhost:8000/docs>.
 
 ```bash
-ollama --version
+docker compose logs -f app      # application logs
+docker compose down             # stop, keep data
+docker compose down -v          # stop and delete all data
 ```
 
-Start Ollama if it is not already running:
+## Local development
 
-```bash
-ollama serve
-```
+Requirements:
 
-Open another terminal and download the model:
+- Python 3.12+
+- Node.js 22+
+- [Ollama](https://ollama.com/) with `qwen3:8b`
+- [Hindsight](https://hindsight.vectorize.io/) on port `8888`
 
-```bash
-ollama pull qwen3:8b
-```
-
----
-
-## Linux
-
-Install Ollama using the official installation method:
-
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-Verify the installation:
-
-```bash
-ollama --version
-```
-
-Start Ollama:
-
-```bash
-ollama serve
-```
-
-In another terminal:
+### 1. Start Ollama and Hindsight
 
 ```bash
 ollama pull qwen3:8b
+ollama pull qwen2.5-coder:3b
+
+docker compose up -d ollama hindsight
 ```
 
----
+Hindsight uses `qwen2.5-coder:3b` for its own extraction work and stores its
+Postgres data in the `hindsight-data` volume. The application's own fact
+selection uses `qwen3:8b` through Ollama.
 
-## Windows
-
-Download and install Ollama for Windows.
-
-After installation, open **PowerShell** and verify:
-
-```powershell
-ollama --version
-```
-
-Download the Qwen3 8B model:
-
-```powershell
-ollama pull qwen3:8b
-```
-
-Test the model:
-
-```powershell
-ollama run qwen3:8b
-```
-
----
-
-# 3. Backend Setup
-
-Navigate to the backend directory:
+### 2. Install and run the backend
 
 ```bash
-cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements-dev.txt
+cp .env.example .env
+uvicorn backend.app.main:app --reload --port 8000
 ```
 
-## macOS / Linux
+The database and upload directory are created on startup.
 
-Create a Python virtual environment:
+### 3. Install and run the frontend
 
-```bash
-python3 -m venv venv
-```
-
-Activate it:
-
-```bash
-source venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Windows
-
-Create a virtual environment:
-
-```powershell
-python -m venv venv
-```
-
-Activate it:
-
-```powershell
-.\venv\Scripts\Activate.ps1
-```
-
-If PowerShell blocks the activation script, run:
-
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-Then activate again:
-
-```powershell
-.\venv\Scripts\Activate.ps1
-```
-
-Install dependencies:
-
-```powershell
-pip install -r requirements.txt
-```
-
----
-
-# 4. Configure Environment Variables
-
-Create a `.env` file inside the backend directory if the project requires environment variables.
-
-Example:
-
-```env
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=qwen3:8b
-```
-
-Add any required Hindsight configuration according to your local setup.
-
-**Do not commit API keys, passwords, or other secrets to GitHub.**
-
----
-
-# 5. Initialize the Database
-
-The project uses SQLite for application data.
-
-From the backend directory, run the database initialization command used by the project.
-
-For example:
-
-```bash
-python init_db.py
-```
-
-If database initialization is handled automatically when the FastAPI application starts, this step can be skipped.
-
----
-
-# 6. Start the Backend
-
-Make sure the Python virtual environment is activated.
-
-Run:
-
-```bash
-uvicorn main:app --reload
-```
-
-The FastAPI backend should be available at:
-
-```text
-http://127.0.0.1:8000
-```
-
-API documentation is available at:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Keep this terminal running.
-
----
-
-# 7. Start the Frontend
-
-Open a **new terminal**.
-
-Navigate to the frontend directory:
+In a second terminal:
 
 ```bash
 cd frontend
-```
-
-Install Node.js dependencies:
-
-```bash
-npm install
-```
-
-Start the Vite development server:
-
-```bash
+npm ci
 npm run dev
 ```
 
-The frontend will normally be available at:
+Open <http://localhost:5173>. Vite proxies `/api` to the backend on port
+`8000`.
+
+### 4. Try the memory demo
+
+1. Create a customer, or use the seeded demo customer from the welcome screen.
+2. Send: *"My name is Sarah. I work at Acme Corp. I use Ubuntu 24.04 on a Dell
+   XPS 15, and my Wi-Fi keeps disconnecting."*
+3. Wait for **context saved to memory**.
+4. Start a new conversation and send: *"The Wi-Fi problem is back."*
+5. The reply should mention the earlier device or operating system, and the
+   memory panel should show the recalled facts.
+
+## Configuration
+
+Copy `.env.example` to `.env` and adjust as needed. The most important values:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
+| `OLLAMA_MODEL` | `qwen3:8b` | Chat and fact-extraction model |
+| `OLLAMA_HISTORY_MESSAGES` | `20` | Recent messages sent as conversation history |
+| `HINDSIGHT_BASE_URL` | `http://127.0.0.1:8888` | Hindsight API |
+| `HINDSIGHT_ENABLED` | `true` | Set to `false` to run without long-term memory |
+| `HINDSIGHT_RECALL_LIMIT` | `8` | Maximum recalled memories per turn |
+| `DATABASE_URL` | `sqlite+aiosqlite:///.../data/support_agent.db` | Application database |
+| `UPLOAD_DIR` | `data/uploads` | Attachment storage |
+| `MAX_UPLOAD_SIZE` | `10485760` | Upload limit in bytes |
+| `RATE_LIMIT_CHAT_PER_MINUTE` | `60` | Per-IP chat limit |
+
+Production values should use absolute paths and a real database. See
+[SECURITY.md](SECURITY.md) before exposing the app.
+
+## API
+
+Interactive documentation: <http://localhost:8000/docs>.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `POST` | `/api/chat` | Send a message, recall memory, generate a reply, retain the turn |
+| `GET` | `/api/health` | Database, Ollama, and Hindsight status |
+| `GET` | `/api/health/live` | Liveness probe |
+| `GET` | `/api/health/ready` | Readiness probe |
+| `GET` | `/api/models` | Models reported by Ollama |
+| `GET/POST` | `/api/customers` | List or create customers |
+| `GET/PATCH/DELETE` | `/api/customers/{id}` | Customer lifecycle |
+| `GET/POST` | `/api/customers/{id}/conversations` | List or create conversations |
+| `GET/POST` | `/api/customers/{id}/memories` | Inspect or clear a customer's memory |
+| `GET/PATCH/DELETE` | `/api/conversations/{id}` | Conversation lifecycle |
+| `GET` | `/api/conversations/{id}/messages` | Message history |
+| `GET/POST` | `/api/conversations/{id}/attachments` | List or upload attachments |
+| `GET/DELETE` | `/api/attachments/{id}` | Download or delete an attachment |
+| `POST` | `/api/demo/seed` | Create or return the demo customer |
+| `GET` | `/api/demo/scenario` | Demo script used by the welcome screen |
+
+A chat response includes the reply, conversation and message IDs, recalled
+memories, `memory_used`, `memory_saved`, and `latency_ms`.
+
+## Memory design
+
+- **One bank per customer.** A customer's `memory_key` is a random UUID hex
+  generated at creation. The bank name is `support-customer-<memory_key>`.
+- **Explicit fact selection.** `MemoryExtractor` asks Ollama for a small JSON
+  list of durable facts, validates kinds, removes duplicates, and caps each
+  fact at 240 characters.
+- **Deterministic storage.** Hindsight runs with `retain_extraction_mode`
+  set to `chunks` and observations disabled, so the facts selected by the
+  application are the facts stored.
+- **Hybrid recall.** Each turn runs two Hindsight queries in parallel: one for
+  the current request and one for preferences and recurring context. Results
+  are deduplicated and capped.
+- **Turn summaries.** The user/assistant exchange is also retained as a short
+  summary, preserving the human context around the extracted facts.
+- **Privacy by deletion.** Clearing memory deletes the whole bank. Deleting a
+  customer is refused if their bank cannot be erased.
+
+## Latency
+
+The Send → reply path avoids serial work wherever possible:
+
+- history loading, semantic recall, attachment parsing, fact extraction, and
+  Hindsight bank preparation run concurrently;
+- bank creation and duplicate-fact lookup are completed while Qwen3 generates;
+- the user message is written once, after generation, without redundant
+  refreshes;
+- the frontend renders the user message immediately and appends the assistant
+  reply as soon as the API responds, refreshing the sidebar, memory panel, and
+  health in the background.
+
+## Testing and quality
+
+```bash
+pytest                      # backend: 92% line/branch coverage, 85% gate
+ruff check backend
+ruff format --check backend
+cd frontend && npm test     # 15 component and utility tests
+cd frontend && npm run lint
+cd frontend && npm run build
+```
+
+Backend tests use an isolated in-memory SQLite database, fake Ollama and
+Hindsight services, and `respx` for the real HTTP adapters. Frontend tests use
+Vitest, Testing Library, and jsdom. GitHub Actions runs backend lint/tests,
+frontend lint/tests/build, and a production container build.
+
+## Project structure
 
 ```text
-http://localhost:5173
+backend/
+  app/
+    api/routes/        chat, customers, conversations, health, demo
+    db/                async SQLAlchemy engine and session
+    models/            Customer, Conversation, Message, Attachment
+    schemas/           Pydantic request/response models
+    services/          Ollama, Hindsight, fact extraction, attachments
+  tests/               API and service tests
+frontend/
+  src/
+    components/        three-pane support console
+    api.js             fetch wrapper and error handling
+    App.jsx            state orchestration and optimistic send flow
+docs/demo/             demo video
+.github/workflows/     CI
+Dockerfile             multi-stage production image
+docker-compose.yml     app + Ollama + Hindsight
 ```
 
-Open that address in your browser.
-
----
-
-# 8. Running the Complete Application
-
-You normally need the following services running:
-
-### Terminal 1 — Ollama
-
-```bash
-ollama serve
-```
-
-### Terminal 2 — FastAPI Backend
-
-```bash
-cd backend
-```
-
-Activate the virtual environment and run:
-
-```bash
-uvicorn main:app --reload
-```
-
-### Terminal 3 — React/Vite Frontend
-
-```bash
-cd frontend
-npm run dev
-```
-
-Then open the frontend URL shown by Vite.
-
----
-
-# 9. Verify Ollama
-
-Before using the application, make sure Qwen3 8B is available:
-
-```bash
-ollama list
-```
-
-You should see:
-
-```text
-qwen3:8b
-```
-
-You can also test it directly:
-
-```bash
-ollama run qwen3:8b
-```
-
----
-
-# 10. Running Tests
-
-Backend tests are written using Pytest.
-
-From the backend directory:
-
-```bash
-pytest
-```
-
-For more detailed output:
-
-```bash
-pytest -v
-```
-
----
-
-# 11. Building the Frontend
-
-To create a production build:
-
-```bash
-npm run build
-```
-
-The generated files will be placed in the Vite build output directory.
-
-To preview the production build locally:
-
-```bash
-npm run preview
-```
-
----
-
-# 12. Troubleshooting
-
-## Ollama connection error
-
-Make sure Ollama is running:
-
-```bash
-ollama serve
-```
-
-Then verify:
-
-```bash
-ollama list
-```
-
-Make sure the required model is installed:
-
-```bash
-ollama pull qwen3:8b
-```
-
----
-
-## Python dependency error
-
-Make sure the virtual environment is activated and reinstall dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Frontend dependency error
-
-Delete the existing Node modules and reinstall:
-
-```bash
-rm -rf node_modules
-npm install
-```
-
-On Windows PowerShell:
-
-```powershell
-Remove-Item -Recurse -Force node_modules
-npm install
-```
-
----
-
-## Port already in use
-
-If port `8000` is already being used, start FastAPI on another port:
-
-```bash
-uvicorn main:app --reload --port 8001
-```
-
-For Vite, you can specify another port:
-
-```bash
-npm run dev -- --port 5174
-```
-
----
-
-# Architecture
-
-```text
-                    ┌─────────────────────┐
-                    │   React + Vite      │
-                    │      Frontend       │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │    FastAPI Backend  │
-                    └──────┬────────┬─────┘
-                           │        │
-                ┌──────────┘        └──────────┐
-                ▼                              ▼
-        ┌──────────────┐                ┌──────────────┐
-        │    SQLite    │                │   Hindsight  │
-        │ App / State  │                │ Long-term    │
-        │              │                │ Memory       │
-        └──────────────┘                └──────────────┘
-                                              
-                           ┌───────────────────┐
-                           │      Ollama       │
-                           │                   │
-                           │     Qwen3 8B      │
-                           └───────────────────┘
-```
-
----
-
-# Quick Start
-
-For users who already have the prerequisites installed:
-
-```bash
-git clone https://github.com/charansaiteja-cloud/AI-AGENT.git
-cd AI-AGENT
-
-cd backend
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload
-```
-
-In another terminal:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Make sure Ollama is running with:
-
-```bash
-ollama serve
-```
-
-and Qwen3 8B is installed:
-
-```bash
-ollama pull qwen3:8b
-```
-
----
-## Demo
-
-🎥 [View the Demo Video — brag.mp4](docs/demo/brag.mp4)
-
-The demo showcases the customer support workflow, local Qwen3 8B inference, persistent long-term memory with Hindsight, attachment handling, and the web interface.
-
+## Limitations
+
+- No authentication or per-user authorization; this is a local demo, not a
+  multi-tenant SaaS.
+- SQLite and in-process rate limiting are intended for a single instance.
+- Image attachments are stored and referenced, but no OCR or vision model is
+  used.
+- Memory quality depends on the local model's fact extraction. The extractor
+  is deliberately conservative and only stores explicit, durable facts.
+
+## License
+
+[MIT](LICENSE)

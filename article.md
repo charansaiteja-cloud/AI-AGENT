@@ -1,38 +1,47 @@
 # How I Gave a Customer Support Agent Long-Term Memory With Hindsight
 
-A customer support agent can answer the current question correctly and still feel like it has forgotten the customer.
+A customer support agent can answer the current question correctly and still
+feel like it has forgotten the customer.
 
 That was the problem I wanted to solve.
 
-I built a full-stack customer support application combining React, FastAPI, SQLite, Ollama, Qwen3 8B, and Hindsight. The application maintains normal conversation history while also retaining useful information that can be recalled in future conversations.
+I built a full-stack customer support application with React, FastAPI, SQLite,
+Ollama, Qwen3 8B, and Hindsight. It keeps normal conversation history, but it
+also retains useful customer facts that can be recalled in a future
+conversation.
 
-The goal was not simply to build another chatbot. I wanted to explore what happens when customer support becomes a stateful system: one that can remember previous interactions, preferences, and useful context instead of starting from zero every time.
+The goal was not another chatbot. I wanted to explore what customer support
+looks like when it becomes stateful: a system that remembers a customer's
+device, preferences, and recurring problems instead of starting from zero every
+time.
 
-## The Problem With Ordinary Conversation History
+## Conversation History Is Not Memory
 
 Conversation history and long-term memory solve different problems.
 
-A conversation may contain dozens of messages, but only a few pieces of information may remain useful later. A customer might mention a preference, explain a recurring issue, or provide context that becomes important several days later.
+A single conversation may contain dozens of messages, but only a few pieces of
+information remain useful later. A customer might mention a preference, explain
+a recurring issue, or describe the device they use. Sending the entire
+transcript back to the model does not automatically turn that into useful
+memory; it mostly adds noise and cost.
 
-Sending the entire conversation history back to the language model is possible, but it does not automatically create useful long-term memory. It can also become increasingly noisy as conversations grow.
+For example, a customer says:
 
-For example, imagine a customer says:
+> My name is Sarah. I work at Acme Corp. I use Ubuntu 24.04 on a Dell XPS 15,
+> and my Wi-Fi keeps disconnecting.
 
-"I prefer concise responses and usually contact support from my phone."
+The current answer should address the Wi-Fi problem. The durable facts — name,
+company, operating system, device, and recurring issue — are what should
+survive the conversation.
 
-That information may not matter for the current question, but it could be useful during a future support interaction.
-
-I wanted the agent to recover that kind of context without requiring the customer to repeat it.
-
-That became the central design problem.
+I wanted the agent to recover that context later without asking the customer to
+repeat it.
 
 ## Architecture
 
-The application is divided into a React/Vite frontend and a FastAPI backend.
-
-The frontend provides the customer-facing chat interface. FastAPI handles API requests, conversation persistence, attachments, and communication with the AI services. SQLite with SQLAlchemy provides the application database.
-
-Ollama provides the local model runtime, with Qwen3 8B handling response generation. Hindsight sits alongside the application as the long-term memory layer.
+The application is split into a React/Vite console, a FastAPI backend, SQLite
+for application state, Ollama for local inference, and Hindsight for long-term
+memory.
 
 ```text
                     React + Vite
@@ -50,103 +59,188 @@ Ollama provides the local model runtime, with Qwen3 8B handling response generat
                            Hindsight
                                |
                         Long-term memory
-
 ```
 
-## Implementation
+The boundaries matter. SQLite is the source of truth for customers,
+conversations, messages, and attachments. Hindsight is the source of truth for
+durable customer context. Ollama is replaceable: the model integration lives in
+one service, and the rest of the application does not know how inference
+happens.
 
-The backend separates API handling, model generation, database persistence, and long-term memory. FastAPI receives the customer request, loads the relevant conversation context, recalls useful information from Hindsight, and sends the resulting prompt to Ollama running Qwen3 8B. The generated response is then stored in SQLite and the conversation turn is retained for future recall.
+## One Isolated Memory Bank per Customer
 
-A small Hindsight integration keeps the memory layer separate from the rest of the application:
+The most important design decision was to give every customer a dedicated
+Hindsight bank.
 
-```python
-await hindsight.retain(
-    content=f"Customer: {message_text}\\nAssistant: {response}",
-    conversation_id=str(conversation.id),
-    tags=["customer-support"],
-    context="customer support conversation",
-)
-```
+When a customer is created, the backend generates a random `memory_key`. The
+bank name is `support-customer-<memory_key>`. Recall always uses that bank, so
+scoping is structural rather than a filter that a future query might forget.
+Deleting a customer can also delete their complete memory history in one
+operation.
 
-This separation is important because ordinary conversation history and long-term memory serve different purposes. SQLite remains responsible for application records, while Hindsight provides a way to retrieve useful customer context later.
+That choice makes privacy concrete:
 
-## Local AI With Ollama and Qwen3 8B
+- clearing a customer's memory deletes the whole bank;
+- deleting a customer is refused if the bank cannot be erased;
+- a bug in one customer's recall cannot expose another customer's facts.
 
-Ollama provides the local model runtime and Qwen3 8B handles response generation. Keeping inference local made development simpler and avoided adding another hosted inference service. The model integration is isolated in the backend service layer, so the rest of the application does not need to know how the model is called.
+## Explicit Facts, Not Blind Extraction
 
-## Attachments and Error Handling
+Hindsight can extract memories on its own, but I wanted the application to
+decide which facts are durable enough to keep.
 
-Customer support is not always text-only, so I added attachment support to the backend. Attachments can be associated with conversations and messages, giving the application a more realistic support workflow.
+The flow is:
 
-I also improved frontend error handling. Instead of allowing failed API requests to silently break the experience, the interface can surface errors to the user. This made both debugging and normal interaction more predictable.
+1. Qwen3 receives a strict JSON prompt asking for a small list of durable
+   customer facts: name, company, product, operating system, issue, preference,
+   or other.
+2. The backend validates the response, normalizes capitalization and
+   punctuation, removes duplicates, caps each fact at 240 characters, and keeps
+   at most eight facts.
+3. The selected facts are stored in Hindsight with
+   `retain_extraction_mode="chunks"` and observations disabled.
 
-## Testing
+That last part is subtle. Chunk mode tells Hindsight to preserve the exact
+facts the application selected instead of running another extraction pass over
+them. Hindsight still owns the part that matters most at read time: semantic
+recall. The result is deterministic writes with flexible reads.
 
-The backend was tested with Pytest. The final test run completed with four passing tests:
+The conversation itself is retained as a short summary as well. Extracted facts
+are useful, but the human context around them — what the customer asked and
+what support recommended — is often what makes a later answer feel continuous.
 
-```text
-4 passed in 0.65s
-```
+## The Chat Path
 
-The React frontend was also built successfully with Vite, confirming that the production frontend bundle could be generated without build errors.
+A support request moves through several layers:
+
+1. React sends the message and optional attachment IDs to `POST /api/chat`.
+2. FastAPI resolves the customer and conversation, validates attachments, and
+   loads recent history.
+3. Two Hindsight recall queries run in parallel: one focused on the current
+   request, one on preferences and recurring context.
+4. Recalled facts are deduplicated, capped, and inserted into the system prompt
+   with an explicit instruction to treat them as data, never as instructions.
+5. Qwen3 generates the reply.
+6. The turn is persisted to SQLite and retained in Hindsight.
+7. The API returns the reply, recalled memories, message IDs, whether memory was
+   used or saved, and the measured latency.
+
+The system prompt also handles a detail that is easy to miss: if the customer
+has asked for concise answers in the past, that preference should shape the
+current reply. The backend detects preference language in recalled facts and
+adds a response-style instruction.
+
+## Making It Feel Fast
+
+Long-term memory adds work to every turn, so latency needed deliberate design.
+
+The first version loaded history, recalled memory, parsed attachments, and
+extracted facts one after another. None of those steps actually depend on each
+other. The current version runs them concurrently:
+
+- history loading, semantic recall, attachment parsing, fact extraction, and
+  Hindsight bank preparation all start together;
+- bank creation and the duplicate-fact lookup finish while Qwen3 is generating,
+  so the response path only waits for the retain request;
+- the user message is written once, after generation, without redundant
+  database refreshes;
+- history is limited to the most recent configured messages.
+
+The frontend was part of the latency problem too. It used to wait for a full
+message refetch and sidebar refresh before showing the reply. Now it renders
+the user message immediately, appends the assistant reply as soon as the API
+responds, and refreshes the sidebar, memory panel, and service health in the
+background.
+
+The result is that memory work overlaps with model generation instead of being
+added on top of it.
+
+## The Support Console
+
+The frontend is a three-pane console rather than a single chat box:
+
+- a customer and conversation sidebar with search and lifecycle actions;
+- a chat pane with attachments, retryable errors, and per-turn memory badges;
+- a memory inspector showing what Hindsight currently knows about the customer.
+
+The memory panel is the part that makes the system legible. It turns "the agent
+remembered something" into a list of concrete facts with kinds and timestamps.
+It also exposes the clear-memory action, which deletes the customer's bank.
+
+## Attachments
+
+Support is not always text-only, so the chat accepts text, Markdown, CSV, JSON,
+and PDF files. Text is extracted and bounded before being added to the model
+context. Images are stored and referenced, but the app does not pretend to read
+them: if no text preview is available, the prompt says so.
+
+Uploads are validated by extension and size, stored under the conversation ID,
+and linked to the user message only after the chat turn succeeds.
+
+## Testing and CI
+
+The backend is tested with Pytest against an isolated in-memory SQLite database.
+Fake Ollama and Hindsight services cover the API paths, while `respx` exercises
+the real HTTP adapters, including malformed responses and service failures. The
+suite currently reaches 92% line and branch coverage with an 85% gate.
+
+The frontend has Vitest and Testing Library tests for the composer, memory
+panel, formatting helpers, and the main application flow. ESLint and a
+production Vite build run in CI alongside the backend checks and a container
+build.
+
+That testing caught several issues that manual clicking would have missed:
+duplicate facts, attachment ownership, rollback behavior when the model is
+unavailable, and the difference between "memory is disabled" and "memory is
+unavailable."
 
 ## Challenges and Lessons
 
-One of the main challenges was understanding that memory should not simply mean storing more conversation history. A useful memory system needs a way to retain information and later retrieve information that is relevant to the current interaction.
+The main challenge was not calling Hindsight. It was deciding what memory means
+for this product.
 
-Another challenge was keeping the architecture understandable. SQLite handles structured application data, Ollama handles model inference, and Hindsight handles long-term memory. Separating these responsibilities makes the system easier to debug and gives each component a clear purpose.
+Storing every message is easy and mostly useless. Storing a small, explicit set
+of durable facts is harder because it requires judgment about what should
+survive. Separating fact selection (application) from semantic recall
+(Hindsight) made that judgment testable.
 
-The project also highlighted the importance of the surrounding engineering work. Async API tests, frontend error handling, attachment processing, database models, and environment configuration are all necessary parts of a reliable AI application.
+The second lesson was that memory is a privacy feature as much as a personalization
+feature. A bank per customer, a random key, and deletion that removes the whole
+bank are not implementation details; they are the difference between a demo and
+something you could responsibly run with real customer data.
 
-## Visuals
-
-Three visuals would make the article easier to follow: a screenshot of the customer support interface, a screenshot showing a later conversation using remembered context, and the architecture diagram included earlier in this article.
-
-## Resources
-
-Hindsight GitHub: https://github.com/vectorize-io/hindsight
-
-Hindsight documentation: https://hindsight.vectorize.io/
-
-Vectorize agent memory: https://vectorize.io/
-
-## Takeaways
-
-This project showed me that a useful customer support agent needs more than a capable language model. The surrounding application determines whether the agent can persist information, retrieve relevant context, handle attachments, communicate errors clearly, and maintain reliable application state.
-
-The combination of React, FastAPI, SQLite, Ollama, Qwen3 8B, and Hindsight provides a practical foundation for experimenting with persistent customer context. The key architectural lesson is to treat long-term memory as a separate concern rather than simply making the chat history longer.
-
-Future improvements could include better memory retrieval, authentication, richer ticket workflows, and production deployment. For me, the most valuable part of the project was seeing how these components work together to turn a basic chatbot into a more stateful customer support system.
-
-## How a Support Request Flows Through the System
-
-A typical request moves through several layers before the customer sees an answer. The React interface sends the message to the FastAPI backend. The backend identifies the conversation and gathers the available context. It can then request relevant memories from Hindsight instead of sending an unrelated collection of previous messages to the model.
-
-The resulting context is combined with the current customer request and passed to Ollama. Qwen3 8B generates the response, which is returned through the FastAPI API to the React interface. The interaction is also persisted so that the application has a reliable record of what happened.
-
-This flow gives each component a focused responsibility. The frontend concentrates on user interaction, the API coordinates the workflow, SQLite stores application state, Ollama provides inference, and Hindsight provides long-term memory.
+The third lesson was about perceived performance. A reply that takes the same
+time but appears immediately feels dramatically faster. Overlapping independent
+work and rendering optimistically was as valuable as any model-level tuning.
 
 ## What I Would Improve Next
 
-The current implementation is intentionally focused on the core memory workflow, but there are several areas that could be developed further.
+The current implementation is intentionally focused on the memory workflow. The
+next steps would be:
 
-Authentication would allow the system to securely associate conversations and memories with individual customers. More advanced ticket workflows could also connect conversations to ticket status, priority, assignment, and resolution history.
+- authentication and per-user authorization before any real deployment;
+- a production database and external rate limiting for multiple instances;
+- richer ticket workflows connecting conversations to status and assignment;
+- memory editing and expiration controls for customers and support agents;
+- observability around recall quality, not just latency and errors.
 
-Memory retrieval could be improved as the number of conversations grows. Instead of relying only on the current query, a future version could use additional customer metadata and more carefully designed retrieval strategies.
+The architecture is ready for those changes because the frontend, API,
+database, model runtime, and memory layer each have a clear responsibility.
 
-Production deployment would also require additional work around secrets, logging, monitoring, database management, authentication, and service reliability.
+## Resources
 
-These improvements are useful because they build on the existing separation of responsibilities rather than requiring the entire application to be redesigned.
+- Hindsight: <https://github.com/vectorize-io/hindsight>
+- Hindsight documentation: <https://hindsight.vectorize.io/>
+- Vectorize: <https://vectorize.io/>
+- Source code: <https://github.com/charansaiteja-cloud/AI-AGENT>
 
 ## Final Thoughts
 
-Building this project changed how I think about AI support systems. The language model is only one part of the experience. A useful agent also needs persistence, memory, APIs, a user interface, error handling, testing, and a clear architecture.
+Building this project changed how I think about AI support systems. The language
+model is only one part of the experience. A useful agent also needs
+persistence, scoped memory, clear APIs, a legible interface, error handling,
+tests, and a deployment path.
 
-The most important result was not simply getting an AI response on screen. It was creating a system where information can survive beyond a single conversation and become useful later.
-
-That distinction is what makes long-term memory interesting for customer support. Instead of treating every conversation as an isolated request, the application can gradually build useful context around the customer.
-
-The project also reinforced a practical engineering principle: start with clear boundaries between components. When the frontend, backend, database, model runtime, and memory layer each have a defined role, it becomes easier to test the system, diagnose problems, and improve individual pieces without rewriting everything.
-
-For future versions, I would focus on secure customer identity, stronger memory retrieval, richer support workflows, observability, and production deployment. The current architecture provides a solid foundation for those next steps.
-
+The most important result was not getting an AI response on screen. It was
+creating a system where information survives beyond a single conversation and
+becomes useful later — without losing track of which customer it belongs to.
