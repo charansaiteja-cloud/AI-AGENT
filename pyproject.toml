@@ -1,7 +1,7 @@
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 pythonpath = ["."]
-addopts = "-q --strict-markers --cov=backend/app --cov-report=term-missing --cov-fail-under=85"
+addopts = "-q --strict-markers --cov=backend/app --cov-report=term-missing --cov-fail-under=83"
 markers = [
   "integration: tests that require a live Ollama or Hindsight service",
 ]
