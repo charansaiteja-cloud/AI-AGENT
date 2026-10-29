@@ -182,7 +182,7 @@ and linked to the user message only after the chat turn succeeds.
 The backend is tested with Pytest against an isolated in-memory SQLite database.
 Fake Ollama and Hindsight services cover the API paths, while `respx` exercises
 the real HTTP adapters, including malformed responses and service failures. The
-suite currently reaches 85.2% line and branch coverage with an 83% gate.
+suite currently reaches 84.9% line and branch coverage with an 83% gate.
 
 The frontend has Vitest and Testing Library tests for the composer, memory
 panel, formatting helpers, and the main application flow. ESLint and a

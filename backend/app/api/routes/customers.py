@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import cast
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,11 +82,11 @@ async def list_customers(
 
     return [
         customer_out(
-            customer,
-            conversation_count=int(count or 0),
-            last_activity_at=activity,
+            cast(Customer, row[0]),
+            conversation_count=int(cast(int | None, row[1]) or 0),
+            last_activity_at=cast(datetime | None, row[2]),
         )
-        for customer, count, activity in result.all()
+        for row in result.all()
     ]
 
 
@@ -248,20 +251,23 @@ async def list_customer_conversations(
         .order_by(Conversation.updated_at.desc())
     )
 
-    return [
-        ConversationSummary(
-            id=conversation.id,
-            customer_id=conversation.customer_id,
-            title=conversation.title,
-            status=conversation.status,
-            created_at=conversation.created_at,
-            updated_at=conversation.updated_at,
-            message_count=int(count or 0),
-            last_message=last,
-            last_message_at=last_at,
+    summaries: list[ConversationSummary] = []
+    for row in result.all():
+        conversation = cast(Conversation, row[0])
+        summaries.append(
+            ConversationSummary(
+                id=conversation.id,
+                customer_id=conversation.customer_id,
+                title=conversation.title,
+                status=conversation.status,
+                created_at=conversation.created_at,
+                updated_at=conversation.updated_at,
+                message_count=int(cast(int | None, row[1]) or 0),
+                last_message=cast(str | None, row[2]),
+                last_message_at=cast(datetime | None, row[3]),
+            )
         )
-        for conversation, count, last, last_at in result.all()
-    ]
+    return summaries
 
 
 @router.post(

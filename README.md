@@ -247,7 +247,7 @@ definitions and limitations.
 ## Testing and quality
 
 ```bash
-pytest                      # 121 backend tests, 85% branch coverage, 83% gate
+pytest                      # 121 backend tests, 84.9% branch coverage, 83% gate
 ruff check backend
 ruff format --check backend
 mypy backend/app
