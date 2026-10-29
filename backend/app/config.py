@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     environment: Literal["development", "production", "test"] = "development"
     debug: bool = False
     api_prefix: str = "/api"
+    app_api_key: str | None = None
 
     database_url: str = f"sqlite+aiosqlite:///{BASE_DIR / 'data' / 'support_agent.db'}"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
@@ -55,6 +56,14 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
+    @field_validator("app_api_key")
+    @classmethod
+    def _blank_key_is_disabled(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
     @field_validator("upload_dir", "static_dir", mode="before")
     @classmethod
     def _expand_path(cls, value: object) -> Path:
@@ -75,6 +84,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def api_auth_enabled(self) -> bool:
+        return bool(self.app_api_key)
 
 
 settings = Settings()

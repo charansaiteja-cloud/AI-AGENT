@@ -35,6 +35,12 @@ jobs:
           ruff check backend
           ruff format --check backend
 
+      - name: Type check
+        run: mypy backend/app
+
+      - name: Memory extraction evaluation
+        run: python -m backend.eval.memory_eval --backend fixture
+
       - name: Test
         run: pytest
 

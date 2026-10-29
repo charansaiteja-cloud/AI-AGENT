@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -48,6 +49,44 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             )
 
         return response
+
+
+class ApiKeyMiddleware(BaseHTTPMiddleware):
+    """Optional shared-secret authentication for every /api route.
+
+    Health endpoints stay open so container orchestrators can probe the
+    service. When ``APP_API_KEY`` is unset, the middleware is a no-op, which
+    keeps local development and the bundled demo unchanged.
+    """
+
+    @staticmethod
+    def _is_public(path: str) -> bool:
+        prefix = settings.api_prefix
+        return path in {
+            f"{prefix}/health",
+            f"{prefix}/health/live",
+            f"{prefix}/health/ready",
+        }
+
+    async def dispatch(self, request: Request, call_next):
+        configured_key = settings.app_api_key
+        if (
+            not configured_key
+            or request.method == "OPTIONS"
+            or self._is_public(request.url.path)
+            or not request.url.path.startswith(settings.api_prefix)
+        ):
+            return await call_next(request)
+
+        provided = request.headers.get("X-API-Key", "")
+        if not secrets.compare_digest(provided, configured_key):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid or missing API key."},
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
+
+        return await call_next(request)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -177,11 +216,12 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origin_list,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "X-Request-ID"],
+        allow_headers=["Content-Type", "X-Request-ID", "X-API-Key"],
         expose_headers=["X-Request-ID", "X-RateLimit-Limit", "Retry-After"],
     )
     app.add_middleware(GZipMiddleware, minimum_size=1_000)
     app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(ApiKeyMiddleware)
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
 

@@ -6,6 +6,8 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+ARG VITE_API_KEY=""
+ENV VITE_API_KEY=$VITE_API_KEY
 RUN npm run build
 
 FROM python:3.12-slim AS runtime

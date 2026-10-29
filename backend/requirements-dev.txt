@@ -6,3 +6,4 @@ respx==0.23.1
 ruff==0.17.3
 bandit==1.9.4
 pip-audit==2.10.1
+mypy>=1.10,<2.0

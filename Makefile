@@ -5,7 +5,7 @@ PY := $(VENV)/bin/python
 UVICORN := $(VENV)/bin/uvicorn
 
 .PHONY: help install backend-install frontend-install dev backend frontend \
-	test test-backend test-frontend lint lint-backend lint-frontend build \
+	test test-backend test-frontend lint lint-backend lint-frontend type eval build \
 	run docker-up docker-down clean
 
 help:
@@ -15,6 +15,8 @@ help:
 	@echo "frontend       Run the Vite dev server on :5173"
 	@echo "test           Run backend and frontend tests"
 	@echo "lint           Run Ruff and ESLint"
+	@echo "type           Run Mypy on the backend"
+	@echo "eval           Run the offline memory-extraction evaluation"
 	@echo "build          Build the production frontend bundle"
 	@echo "run            Build the frontend and serve everything on :8000"
 	@echo "docker-up      Start the full stack with Docker Compose"
@@ -59,6 +61,12 @@ lint-backend:
 
 lint-frontend:
 	cd frontend && npm run lint
+
+type:
+	$(VENV)/bin/mypy backend/app
+
+eval:
+	$(PY) -m backend.eval.memory_eval --backend fixture
 
 build:
 	cd frontend && npm run build

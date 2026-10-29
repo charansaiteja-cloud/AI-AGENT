@@ -43,7 +43,10 @@ services:
     restart: "no"
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_API_KEY: ${VITE_API_KEY:-}
     ports:
       - "8000:8000"
     environment:
@@ -55,6 +58,7 @@ services:
       OLLAMA_MODEL: qwen3:8b
       HINDSIGHT_BASE_URL: http://hindsight:8888
       HINDSIGHT_ENABLED: "true"
+      APP_API_KEY: ${APP_API_KEY:-}
     volumes:
       - app-data:/data
     depends_on:

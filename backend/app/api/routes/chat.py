@@ -343,7 +343,7 @@ async def _recall_memories(
     seen: set[str] = set()
 
     for result in results:
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             logger.warning("Hindsight recall query failed", exc_info=result)
             continue
 

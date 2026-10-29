@@ -1,4 +1,5 @@
 const API_BASE = "";
+const API_KEY = import.meta.env.VITE_API_KEY || "";
 
 export class ApiError extends Error {
   constructor(message, status, details = null) {
@@ -45,6 +46,9 @@ function extractDetail(payload) {
 async function request(path, options = {}) {
   const { method = "GET", body, headers = {}, signal } = options;
   const requestHeaders = { Accept: "application/json", ...headers };
+  if (API_KEY) {
+    requestHeaders["X-API-Key"] = API_KEY;
+  }
   const init = { method, headers: requestHeaders, signal };
 
   if (body instanceof FormData) {

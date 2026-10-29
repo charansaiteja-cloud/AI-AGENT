@@ -147,9 +147,28 @@ Copy `.env.example` to `.env` and adjust as needed. The most important values:
 | `UPLOAD_DIR` | `data/uploads` | Attachment storage |
 | `MAX_UPLOAD_SIZE` | `10485760` | Upload limit in bytes |
 | `RATE_LIMIT_CHAT_PER_MINUTE` | `60` | Per-IP chat limit |
+| `APP_API_KEY` | unset | Optional shared secret for every `/api` route |
+| `VITE_API_KEY` | unset | Build-time key sent by the bundled frontend |
 
 Production values should use absolute paths and a real database. See
 [SECURITY.md](SECURITY.md) before exposing the app.
+
+### Optional API-key authentication
+
+The demo is open by default so `docker compose up` works without extra setup.
+Set `APP_API_KEY` to a long random value to require `X-API-Key` on every API
+route except the health probes:
+
+```bash
+export APP_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+uvicorn backend.app.main:app --port 8000
+curl -H "X-API-Key: $APP_API_KEY" http://localhost:8000/api/customers
+```
+
+The comparison uses `secrets.compare_digest`. If you serve the bundled
+frontend, build it with the same value in `VITE_API_KEY`; for an internet-facing
+deployment, put the app behind TLS and a real identity-aware proxy. A shared
+key is a deployment guard, not a multi-tenant authorization model.
 
 ## API
 
@@ -207,21 +226,42 @@ The Send → reply path avoids serial work wherever possible:
   reply as soon as the API responds, refreshing the sidebar, memory panel, and
   health in the background.
 
+## Memory-extraction evaluation
+
+The product claim is that the agent retains durable customer facts. The
+repository includes a small, labelled evaluation harness so that claim can be
+measured instead of asserted:
+
+```bash
+python -m backend.eval.memory_eval --backend fixture   # offline, used in CI
+python -m backend.eval.memory_eval --backend ollama --model qwen3:8b
+```
+
+`fixture` checks the scorer and dataset plumbing without a model. `ollama`
+runs the real `MemoryExtractor` against eight labelled messages and reports
+keyword recall, fact precision, F1, duplicates, and invalid fact kinds. The
+process exits non-zero when recall or precision falls below the configured
+thresholds. See [docs/EVALUATION.md](docs/EVALUATION.md) for the metric
+definitions and limitations.
+
 ## Testing and quality
 
 ```bash
-pytest                      # backend: 92% line/branch coverage, 85% gate
+pytest                      # 121 backend tests, 85% branch coverage, 83% gate
 ruff check backend
 ruff format --check backend
-cd frontend && npm test     # 15 component and utility tests
+mypy backend/app
+python -m backend.eval.memory_eval --backend fixture
+cd frontend && npm test     # 17 component and utility tests
 cd frontend && npm run lint
 cd frontend && npm run build
 ```
 
 Backend tests use an isolated in-memory SQLite database, fake Ollama and
 Hindsight services, and `respx` for the real HTTP adapters. Frontend tests use
-Vitest, Testing Library, and jsdom. GitHub Actions runs backend lint/tests,
-frontend lint/tests/build, and a production container build.
+Vitest, Testing Library, and jsdom. GitHub Actions runs backend lint, type
+checks, the offline evaluation, tests, frontend lint/tests/build, and a
+production container build.
 
 ## Project structure
 
@@ -233,6 +273,7 @@ backend/
     models/            Customer, Conversation, Message, Attachment
     schemas/           Pydantic request/response models
     services/          Ollama, Hindsight, fact extraction, attachments
+  eval/               labelled memory-extraction evaluation and CLI
   tests/               API and service tests
 frontend/
   src/
