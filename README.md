@@ -7,7 +7,38 @@ inference, and [Hindsight](https://github.com/vectorize-io/hindsight) as the
 memory layer. A customer can explain their setup once, start a new
 conversation later, and still get an answer that reflects the earlier context.
 
-[Watch the demo video](docs/demo/customer-support-agent-demo.mp4)
+## Demo
+
+A 14-second tour of the flows that define the project: customer creation, the
+first conversation, fact extraction, returning-customer recall, and memory
+isolation between two customers.
+
+![Support AI demo](docs/demo/demo.gif)
+
+1. **Create a customer.** Sarah Chen gets her own profile and memory key.
+2. **First conversation.** She describes her Dell XPS 15, Ubuntu 24.04, and a
+   recurring Wi-Fi issue.
+3. **Fact extraction.** Qwen3 turns the message into six typed facts, visible
+   in the memory inspector.
+4. **Returning customer.** A new conversation opens with "The Wi-Fi problem is
+   back"; six memories are recalled and the reply names her device and OS.
+5. **Isolation.** Marcus Webb's bank contains only his Windows/Surface facts —
+   none of Sarah's context crosses over.
+
+The full recording is [here](docs/demo/demo.mp4); the motion-graphic overview is
+[here](docs/demo/customer-support-agent-demo.mp4).
+
+<details>
+<summary><strong>Step-by-step screenshots</strong></summary>
+
+| | |
+|:--:|:--:|
+| ![Create a customer](docs/demo/screens/01-create-customer.png) | ![First conversation](docs/demo/screens/02-first-conversation.png) |
+| **1. Registration** — isolated bank created up front | **2–3. Conversation + extraction** — reply and six facts |
+| ![Returning customer](docs/demo/screens/04-returning-customer.png) | ![Memory isolation](docs/demo/screens/05-memory-isolation.png) |
+| **4. Recall** — 6 memories, 14.8 s, device named | **5. Isolation** — Sarah's and Marcus's banks side by side |
+
+</details>
 
 ## What it does
 
@@ -29,24 +60,26 @@ conversation later, and still get an answer that reflects the earlier context.
 
 ## Architecture
 
-```text
-┌─────────────────────┐        ┌──────────────────────┐
-│ React + Vite        │  /api  │ FastAPI              │
-│ support console     │───────▶│ chat / customers /   │
-│                     │        │ conversations        │
-└─────────────────────┘        └──────┬───────┬───────┘
-                                      │       │
-                         ┌────────────▼─┐   ┌─▼──────────────┐
-                         │ SQLite       │   │ Ollama         │
-                         │ app state    │   │ qwen3:8b       │
-                         └──────────────┘   └─┬──────────────┘
-                                            │ generation
-                         ┌──────────────────▼─┐
-                         │ Hindsight           │
-                         │ one bank/customer   │
-                         │ semantic recall     │
-                         └─────────────────────┘
+```mermaid
+flowchart LR
+    UI["React + Vite<br/>support console"] -->|/api| API["FastAPI<br/>chat · customers · conversations"]
+    API --> DB[("SQLite<br/>app state")]
+    API -->|generate| OLL["Ollama<br/>qwen3:8b"]
+    API -->|retain / recall| HS["Hindsight<br/>one bank per customer"]
+    OLL -.->|typed facts| API
+    HS -.->|recalled context| API
 ```
+
+<details>
+<summary>Plain-text architecture</summary>
+
+```text
+React console ──▶ FastAPI ──┬──▶ SQLite            app state
+                            ├──▶ Ollama qwen3:8b   generation
+                            └──▶ Hindsight         one bank per customer
+```
+
+</details>
 
 The backend extracts facts with Ollama, stores those exact facts in Hindsight
 (`retain_extraction_mode="chunks"`, observations disabled), and uses Hindsight

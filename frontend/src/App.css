@@ -1469,6 +1469,15 @@ p {
   border-radius: 10px;
 }
 
+.recall-card-saved-only {
+  display: inline-flex;
+  padding: 7px 11px;
+}
+
+.recall-card-saved-only .recall-saved {
+  margin-top: 0;
+}
+
 .recall-card-head {
   display: flex;
   align-items: center;

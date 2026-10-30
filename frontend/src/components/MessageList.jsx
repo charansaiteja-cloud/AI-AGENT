@@ -54,39 +54,44 @@ function AttachmentCard({ attachment }) {
 }
 
 function RecallCard({ turn }) {
-  if (!turn?.memories?.length) {
+  const memories = turn?.memories ?? [];
+  if (!memories.length && !turn?.memorySaved) {
     return null;
   }
 
   return (
-    <div className="recall-card">
-      <div className="recall-card-head">
-        <span className="recall-icon">
-          <Icon name="brain" size={16} />
-        </span>
-        <div>
-          <strong>
-            Recalled {turn.memories.length}{" "}
-            {turn.memories.length === 1 ? "memory" : "memories"}
-          </strong>
-          <span>Used to personalize this reply</span>
-        </div>
-        <span className="recall-latency">
-          {turn.latencyMs ? `${(turn.latencyMs / 1000).toFixed(1)}s` : ""}
-        </span>
-      </div>
-      <div className="recall-items">
-        {turn.memories.slice(0, 3).map((memory) => (
-          <span key={memory.id || memory.text} className="recall-chip">
-            {memory.text}
-          </span>
-        ))}
-        {turn.memories.length > 3 ? (
-          <span className="recall-chip recall-chip-more">
-            +{turn.memories.length - 3} more
-          </span>
-        ) : null}
-      </div>
+    <div className={`recall-card ${memories.length ? "" : "recall-card-saved-only"}`}>
+      {memories.length ? (
+        <>
+          <div className="recall-card-head">
+            <span className="recall-icon">
+              <Icon name="brain" size={16} />
+            </span>
+            <div>
+              <strong>
+                Recalled {memories.length}{" "}
+                {memories.length === 1 ? "memory" : "memories"}
+              </strong>
+              <span>Used to personalize this reply</span>
+            </div>
+            <span className="recall-latency">
+              {turn.latencyMs ? `${(turn.latencyMs / 1000).toFixed(1)}s` : ""}
+            </span>
+          </div>
+          <div className="recall-items">
+            {memories.slice(0, 3).map((memory) => (
+              <span key={memory.id || memory.text} className="recall-chip">
+                {memory.text}
+              </span>
+            ))}
+            {memories.length > 3 ? (
+              <span className="recall-chip recall-chip-more">
+                +{memories.length - 3} more
+              </span>
+            ) : null}
+          </div>
+        </>
+      ) : null}
       {turn.memorySaved ? (
         <div className="recall-saved">
           <Icon name="check" size={13} />
